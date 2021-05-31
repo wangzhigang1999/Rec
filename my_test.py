@@ -1,5 +1,6 @@
 import os
 
+import cv2
 import torch
 from PIL import Image
 from tqdm import tqdm
@@ -10,6 +11,8 @@ from util import load_image, xywh2xyxy, pre_crop
 dir = r"E:\222\ElectricityMeter\training\images"
 
 w_h_rate = 5.0
+
+from utils.general import non_max_suppression
 
 
 def test(weights, cuda=True):
@@ -24,7 +27,6 @@ def test(weights, cuda=True):
     model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
 
     for i in tqdm(os.listdir(dir)):
-
         img = load_image(os.path.join(dir, i))
         img = img.to(device, non_blocking=True)
         img = img.half()  # uint8 to fp16/32
@@ -32,46 +34,46 @@ def test(weights, cuda=True):
         img = torch.unsqueeze(img, 0)
 
         with torch.no_grad():
-            out, _ = model(img, augment=False)
-            predn = out[0]
-            max_conf, box = 0, []
-            for *xyxy, conf, _ in predn.tolist():
-                if conf > max_conf:
-                    max_conf = conf
-                    box = xyxy
-                    continue
-            box = [int(i) for i in xywh2xyxy(box)]
+            out = model(img, augment=True)[0]
 
-            # left, top, right, bottom = box[0], box[1], box[2], box[3]
-            try:
-                img = Image.open(os.path.join(dir, i))
-                res, _, _ = pre_crop(img, box)
-                res = res.resize((500, 100))
-                res.save("{}/{}".format("crop", i))
-            except:
-                pass
-            # img = np.asarray(res)
-            # cv2.imshow("sss",img)
-            # cv2.waitKey(0)
-            # res.show()
-            # print(w, h)
-            # left -= 5
-            # left = max(left, 0)
-            # top -= 8
-            # right += 5
-            # right = min(right, 640)
-            # bottom += 8
+            pred = non_max_suppression(out)
+            for _, det in enumerate(pred):
+                classes = []
+                for *yolo_box, conf, cls in reversed(det):
+                    classes.append(int(cls))
+                    crop_and_save(box=yolo_box, i=i)
 
-            # img = cv2.imread(os.path.join(dir, i))
-            # res = cv2.rectangle(img, (left, top), (right, bottom), (0, 0, 255), 2)
-            #
-            # cropImg = res[top:bottom, left:right]
-            # print(i)
-            # cv2.imshow("src", res)
-            # cv2.imshow("crop", cropImg)
-            # cv2.imwrite("{}/{}".format("crop", i), cropImg)
-            # cv2.waitKey(0)
+
+def crop_and_save(box, i):
+    img = Image.open(os.path.join(dir, i))
+    res, _, _ = pre_crop(img, box)
+    res = res.resize((500, 100))
+    res.save("{}/{}".format("crop", i))
+
+
+def find_best_box(out):
+    predn = out[0]
+    max_conf, box, cls = 0, [], None
+    results = predn.tolist()
+    for *xyxy, conf, cls in results:
+        if conf > max_conf:
+            max_conf = conf
+            box = xyxy
+            cls = int(cls)
+            continue
+    box = [int(i) for i in xywh2xyxy(box)]
+    return box, cls
+
+
+def show_cv2(i, box):
+    left, top, right, bottom = box[0], box[1], box[2], box[3]
+    img = cv2.imread(os.path.join(dir, i))
+    res = cv2.rectangle(img, (left, top), (right, bottom), (0, 0, 255), 2)
+    cropImg = res[top:bottom, left:right]
+    cv2.imshow("src", res)
+    cv2.imshow("crop", cropImg)
+    cv2.waitKey(0)
 
 
 if __name__ == '__main__':
-    test(r"C:\Users\wanz\PycharmProjects\machine_learning\best.pt")
+    test(r"C:\Users\wanz\PycharmProjects\machine_learning\ckpt\350_best.pt")
