@@ -17,7 +17,7 @@ def convert(path):
 
 
 if __name__ == '__main__':
-    label_dir = r"C:\Users\wanz\Desktop\label"
+    label_dir = r"E:\ElectricityMeter\rec_train\labels"
 
     labels = os.listdir(label_dir)
 

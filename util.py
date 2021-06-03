@@ -5,7 +5,6 @@ from torchvision.transforms import *
 
 def load_image(path):
     img = cv2.imread(path)  # BGR
-    # img = cv2.resize(img, (128, 544))
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     ret, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     if len(cv2.split(img)) < 3:
@@ -26,15 +25,15 @@ def xywh2xyxy(x):
     return y
 
 
-def expand_box(box, rate=5):
-    y_min = int(box[1])
+def expand_box(box):
+    y_min = int(box[1])+10
     y_max = int(box[3])
-    x_min = int(box[0])
+    x_min = int(box[0])+15
     x_max = int(box[2])
-    ref_width = x_max - x_min
-    x_max = int(float(x_max) + 0.05 * ref_width)  # 0.2
-    x_min = int(float(x_min) - 0.1 * ref_width)  # 0.15
-
+    # ref_width = x_max - x_min
+    # # x_max = int(float(x_max) + 0.05 * ref_width)
+    # # x_min = int(float(x_min) - 0.1 * ref_width)
+    #
     real_width = x_max - x_min
 
     real_height = real_width / 5 / 2

@@ -1,24 +1,45 @@
 import argparse
+import os
+import pickle
+import shutil
 
 import cv2
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 from PIL import Image
+from tqdm import tqdm
 
+from count_acc import count
 from models.experimental import attempt_load
-from util import load_image, pre_crop
+from util import load_image, pre_crop, xywh2xyxy
 from utils.datasets import letterbox
 from utils.general import non_max_suppression, scale_coords
 from utils.plots import colors, plot_one_box
 from utils.torch_utils import select_device
+
+label_pkl = "label.pkl"
+
+
+def load_pkl(pkl):
+    with open(pkl, "rb+")as f:
+        return pickle.load(f)
+
+
+labels = load_pkl(label_pkl)
+
+
+def convert(path):
+    img = cv2.imread(path)  # BGR
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    ret, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    cv2.imwrite(path, binary)
 
 
 def img_preprocess_for_rec(path):
     img = cv2.imread(path, -1)  # BGR (-1 is IMREAD_UNCHANGED)
     img = np.stack((img,) * 3, axis=-1)
     img = letterbox(img, 512, stride=32)[0]
-
     img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
     img = np.ascontiguousarray(img)
     return img
@@ -46,6 +67,19 @@ def init_detect_model(weights):
     return model
 
 
+def find_best_box(out):
+    predn = out[0]
+    max_conf, box, cls = 0, [], None
+    results = predn.tolist()
+    for *xyxy, conf, cls in results[0]:
+        if conf > max_conf:
+            max_conf = conf
+            box = xyxy
+            continue
+    box = [int(i) for i in xywh2xyxy(box)]
+    return box
+
+
 @torch.no_grad()
 def detect(model, path):
     img = load_image(path)
@@ -53,22 +87,34 @@ def detect(model, path):
     img = img.half()  # uint8 to fp16/32
     img /= 255.0  # 0 - 255 to 0.0 - 1.0
     img = torch.unsqueeze(img, 0)
-    out = model(img, augment=True)[0]
+    out = model(img, augment=True)
+    i = path.split("\\")[-1]
+    save_path = "test/{}".format(i)
+    img = Image.open(path)
+    pred = non_max_suppression(out[0], conf_thres=0.25, iou_thres=0.45, max_det=300)
+    box = None
 
-    pred = non_max_suppression(out)
-    for _, det in enumerate(pred):
-        for *yolo_box, conf, cls in reversed(det):
-            img = Image.open(path)
-            res, _, _ = pre_crop(img, yolo_box)
-            res = res.resize((500, 100))
-            res.save("./test.jpg")
+    box = find_best_box(out)
+
+    # # assert len(pred) == 1
+    # for _, det in enumerate(pred):
+    #     for *yolo_box, conf, cls in reversed(det):
+    #         box = yolo_box
+
+    if box is None:
+        return None
+
+    res, _, _ = pre_crop(img, box)
+    res = res.resize((500, 100))
+    res.save(save_path)
+    return save_path
 
 
 @torch.no_grad()
 def rec(opt, model, path):
-    save_img = True
+    global labels
     device = opt.device
-
+    convert(path)
     device = select_device(device)
     half = device.type != 'cpu'  # half precision only supported on CUDA
 
@@ -105,13 +151,17 @@ def rec(opt, model, path):
                 plot_one_box(xyxy, original_img, label=label, color=colors(c, True), line_thickness=opt.line_thickness)
                 classes[int(xyxy[0])] = c
 
-    if save_img:
-        cv2.imshow("inference", original_img)
-        cv2.waitKey(0)
-
     for i in sorted(classes.keys()):
         predict += str(classes[i])
-        print(classes[i], end="")
+        # print(classes[i], end="")
+
+    k = int(path.split("/")[-1].split(".")[0])
+
+    try:
+        if int(labels[k][:-1]) != int(predict[:-1]):
+            shutil.copy(path, "error/{}.jpg".format(k))
+    except Exception as e:
+        pass
     return predict
 
 
@@ -132,6 +182,26 @@ if __name__ == '__main__':
     detect_model = init_detect_model(r"ckpt/detect/350_best.pt")
     rec_model = init_rec_model("ckpt/rec_model.pkl")
 
-    detect(detect_model, "full_test.JPG")
+    # path = detect(detect_model, r"C:\Users\wanz\Desktop\eee\ElectricityMeter\training\images\1001.JPG")
+    # convert(path)
+    # rec(opt, rec_model, path)
 
-    rec(opt, rec_model, r"C:\Users\wanz\PycharmProjects\machine_learning\images\2.JPG")
+    dir = r"C:\Users\wanz\Desktop\eee\ElectricityMeter\training\images"
+
+    all_res = {}
+    for i in tqdm(os.listdir(dir)):
+        idx = str(i).split(".")[0]
+        path = detect(detect_model, os.path.join(dir, i))
+
+        if path is None:
+            all_res[int(idx)] = "000000"
+            continue
+
+        predict = rec(opt, rec_model, path)
+        print(predict)
+        all_res[int(idx)] = predict
+
+    with open("predict.pkl", "wb+")as f:
+        pickle.dump(all_res, f)
+
+    count()
