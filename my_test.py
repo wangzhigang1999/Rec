@@ -40,7 +40,7 @@ def test(weights, cuda=True):
             for _, det in enumerate(pred):
                 classes = []
                 for *yolo_box, conf, cls in reversed(det):
-                    classes.append(int(cls))
+                    # classes.append(int(cls))
                     crop_and_save(box=yolo_box, i=i)
 
 

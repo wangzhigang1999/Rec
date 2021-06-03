@@ -1,63 +1,39 @@
 import argparse
 import json
-import os
-from pathlib import Path
 from threading import Thread
 
-import numpy as np
-import torch
-import yaml
 from tqdm import tqdm
 
 from models.experimental import attempt_load
 from utils.datasets import create_dataloader
-from utils.general import coco80_to_coco91_class, check_dataset, check_file, check_img_size, check_requirements, \
-    box_iou, non_max_suppression, scale_coords, xyxy2xywh, xywh2xyxy, set_logging, increment_path, colorstr
+from utils.general import *
 from utils.metrics import ap_per_class, ConfusionMatrix
 from utils.plots import plot_images, output_to_target, plot_study_txt
 from utils.torch_utils import select_device, time_synchronized
 
 
-def test(data,
-         weights=None,
-         batch_size=32,
-         imgsz=640,
-         conf_thres=0.001,
-         iou_thres=0.6,  # for NMS
-         save_json=False,
-         single_cls=False,
-         augment=False,
-         verbose=False,
-         model=None,
-         dataloader=None,
-         save_dir=Path(''),  # for saving images
+def test(data, weights=None, batch_size=32, imgsz=512, conf_thres=0.001, iou_thres=0.6,  # for NMS
+         save_json=False, single_cls=False, augment=False, verbose=False, model=None,
+         dataloader=None, save_dir=Path(''),  # for saving images
          save_txt=False,  # for auto-labelling
          save_hybrid=False,  # for hybrid auto-labelling
-         save_conf=False,  # save auto-label confidences
+         # save auto-label confidences
          plots=True,
          log_imgs=0,  # number of logged images
          compute_loss=None):
     # Initialize/load model and set device
-    training = model is not None
-    if training:  # called by train.py
-        device = next(model.parameters()).device  # get model device
 
-    else:  # called directly
-        set_logging()
-        device = select_device(opt.device, batch_size=batch_size)
+    training = False
+    device = select_device(opt.device, batch_size=batch_size)
 
-        # Directories
-        save_dir = Path(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))  # increment run
-        (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
+    # Directories
+    save_dir = Path(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))  # increment run
+    (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
 
-        # Load model
-        model = attempt_load(weights, map_location=device)  # load FP32 model
-        gs = max(int(model.stride.max()), 32)  # grid size (max stride)
-        imgsz = check_img_size(imgsz, s=gs)  # check img_size
-
-        # Multi-GPU disabled, incompatible with .half() https://github.com/ultralytics/yolov5/issues/99
-        # if device.type != 'cpu' and torch.cuda.device_count() > 1:
-        #     model = nn.DataParallel(model)
+    # Load model
+    model = attempt_load(weights, map_location=device)  # load FP32 model
+    gs = max(int(model.stride.max()), 32)  # grid size (max stride)
+    imgsz = check_img_size(imgsz, s=gs)  # check img_size
 
     # Half
     half = device.type != 'cpu'  # half precision only supported on CUDA
@@ -75,19 +51,13 @@ def test(data,
     niou = iouv.numel()
 
     # Logging
-    log_imgs, wandb = min(log_imgs, 100), None  # ceil
-    try:
-        import wandb  # Weights & Biases
-    except ImportError:
-        log_imgs = 0
 
-    # Dataloader
-    if not training:
-        if device.type != 'cpu':
-            model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
-        task = opt.task if opt.task in ('train', 'val', 'test') else 'val'  # path to train/val/test images
-        dataloader = create_dataloader(data[task], imgsz, batch_size, gs, opt, pad=0.5, rect=True,
-                                       prefix=colorstr(f'{task}: '))[0]
+    if device.type != 'cpu':
+        model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
+
+    task = opt.task if opt.task in ('train', 'val', 'test') else 'val'  # path to train/val/test images
+
+    dataloader = create_dataloader(data[task], imgsz, batch_size, gs, opt, pad=0.5, rect=True, prefix=colorstr(f'{task}: '))[0]
 
     seen = 0
     confusion_matrix = ConfusionMatrix(nc=nc)
@@ -98,7 +68,9 @@ def test(data,
     loss = torch.zeros(3, device=device)
     jdict, stats, ap, ap_class, wandb_images = [], [], [], [], []
     for batch_i, (img, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):
+        # img = load_image(r"C:\Users\wanz\PycharmProjects\machine_learning\crop\1.JPG")
         img = img.to(device, non_blocking=True)
+        img = torch.unsqueeze(img,0)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
         targets = targets.to(device)
@@ -108,6 +80,13 @@ def test(data,
             # Run model
             t = time_synchronized()
             out, train_out = model(img, augment=augment)  # inference and training outputs
+
+            pred = non_max_suppression(out)
+            for _, det in enumerate(pred):
+                classes = []
+                for *yolo_box, conf, cls in reversed(det):
+                    classes.append(int(cls))
+                print(classes)
             t0 += time_synchronized() - t
 
             # Compute loss
@@ -222,9 +201,6 @@ def test(data,
     # Plots
     if plots:
         confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
-        if wandb and wandb.run:
-            val_batches = [wandb.Image(str(f), caption=f.name) for f in sorted(save_dir.glob('test*.jpg'))]
-            wandb.log({"Images": wandb_images, "Validation": val_batches}, commit=False)
 
     # Save JSON
     if save_json and len(jdict):
@@ -264,7 +240,8 @@ def test(data,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='test.py')
-    parser.add_argument('--weights', nargs='+', type=str, default=r'C:\Users\wanz\PycharmProjects\machine_learning\ckpt\best.pt', help='model.pt path(s)')
+    parser.add_argument('--weights', nargs='+', type=str, default=r'C:\Users\wanz\PycharmProjects\machine_learning\ckpt\best.pt',
+                        help='model.pt path(s)')
     parser.add_argument('--data', type=str, default='data/elec_rec.yaml', help='*.data path')
     parser.add_argument('--batch-size', type=int, default=1, help='size of each image batch')
     parser.add_argument('--img-size', type=int, default=500, help='inference size (pixels)')
@@ -301,7 +278,6 @@ if __name__ == '__main__':
              opt.verbose,
              save_txt=opt.save_txt | opt.save_hybrid,
              save_hybrid=opt.save_hybrid,
-             save_conf=opt.save_conf,
              )
 
     elif opt.task == 'speed':  # speed benchmarks

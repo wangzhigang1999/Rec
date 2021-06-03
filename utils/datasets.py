@@ -182,15 +182,15 @@ class LoadImages:  # for inference
             # Read image
             self.count += 1
             img0 = cv2.imread(path, -1)  # BGR (-1 is IMREAD_UNCHANGED)
+
+            img0 = np.stack((img0,) * 3, axis=-1)
+
             assert img0 is not None, 'Image Not Found ' + path
-            print(f'image {self.count}/{self.nf} {path}: ', end='')
 
         # Padded resize
         img = letterbox(img0, self.img_size, stride=self.stride)[0]
 
         # Convert
-        img = np.stack((img,) * 3, axis=-1)
-
         img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
         img = np.ascontiguousarray(img)
 
@@ -824,7 +824,7 @@ def replicate(img, labels):
     return img, labels
 
 
-def letterbox(img, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True, stride=32):
+def letterbox(img, new_shape=(128, 512), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True, stride=32):
     # Resize and pad image while meeting stride-multiple constraints
     shape = img.shape[:2]  # current shape [height, width]
     if isinstance(new_shape, int):

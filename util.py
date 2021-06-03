@@ -5,10 +5,12 @@ from torchvision.transforms import *
 
 def load_image(path):
     img = cv2.imread(path)  # BGR
+    # img = cv2.resize(img, (128, 544))
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     ret, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    if len(cv2.split(img)) < 3:
+        img = np.stack((binary,) * 3, axis=-1)
 
-    img = np.stack((binary,) * 3, axis=-1)
     img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
     img = np.ascontiguousarray(img)
     return torch.from_numpy(img)
