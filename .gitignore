@@ -1,3 +1,8 @@
 /images/
 /ckpt/
 /error/
+/label.pkl
+/pred.json
+/predict.pkl
+/test.jpg
+/yolov5s.pt

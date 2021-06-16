@@ -1,12 +1,10 @@
 import argparse
 import os
 import pickle
-import shutil
 
 import cv2
 import numpy as np
 import torch
-import torch.backends.cudnn as cudnn
 from PIL import Image
 from tqdm import tqdm
 
@@ -20,6 +18,22 @@ from utils.torch_utils import select_device
 
 label_pkl = "label.pkl"
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--img-size', type=int, default=500, help='inference size (pixels)')
+parser.add_argument('--conf-thres', type=float, default=0.50, help='object confidence threshold')
+parser.add_argument('--iou-thres', type=float, default=0.01, help='IOU threshold for NMS')
+parser.add_argument('--max-det', type=int, default=1000, help='maximum number of detections per image')
+parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+parser.add_argument('--agnostic-nms', default=True, help='class-agnostic NMS')
+parser.add_argument('--augment', default=True, help='augmented inference')
+parser.add_argument('--save_img', default=True, help='show inference res')
+parser.add_argument('--print', default=False, help='show inference res')
+parser.add_argument('--use_max_box', default=True, help='whether use max box')
+parser.add_argument('--line-thickness', default=1, type=int, help='bounding box thickness (pixels)')
+parser.add_argument('--classes', nargs='+', type=int, help='filter by class: --class 0, or --class 0 2 3')
+opt = parser.parse_args()
+
+print(opt)
 
 def load_pkl(pkl):
     with open(pkl, "rb+")as f:
@@ -45,20 +59,18 @@ def img_preprocess_for_rec(path):
     return img
 
 
-def init_rec_model(weight):
-    device = torch.device("cuda:0")
-
-    # Load model
-    model = torch.load(weight, map_location=device)  # load FP32 model
-    model.half()  # to FP16
-    cudnn.benchmark = True
-    model(torch.zeros(1, 3, 512, 512).to(device).type_as(next(model.parameters())))  # run once
-
+def init_detect_model(weights):
+    imgsz = 640
+    device = torch.device('cuda:0')
+    model = attempt_load(weights, map_location=device)  # load FP32 model
+    model.half()
+    model.eval()
+    model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
     return model
 
 
-def init_detect_model(weights):
-    imgsz = 640
+def init_rec_model(weights):
+    imgsz = 512
     device = torch.device('cuda:0')
     model = attempt_load(weights, map_location=device)  # load FP32 model
     model.half()
@@ -94,12 +106,12 @@ def detect(model, path):
     pred = non_max_suppression(out[0], conf_thres=0.25, iou_thres=0.45, max_det=300)
     box = None
 
-    box = find_best_box(out)
-
-    # # assert len(pred) == 1
-    # for _, det in enumerate(pred):
-    #     for *yolo_box, conf, cls in reversed(det):
-    #         box = yolo_box
+    if opt.use_max_box:
+        box = find_best_box(out)
+    else:
+        for _, det in enumerate(pred):
+            for *yolo_box, conf, cls in reversed(det):
+                box = yolo_box
 
     if box is None:
         return None
@@ -150,44 +162,30 @@ def rec(opt, model, path):
                 label = f'{names[c]} {conf:.2f}'
                 plot_one_box(xyxy, original_img, label=label, color=colors(c, True), line_thickness=opt.line_thickness)
                 classes[int(xyxy[0])] = c
+                if opt.save_img:
+                    cv2.imwrite(path, original_img)
 
     for i in sorted(classes.keys()):
         predict += str(classes[i])
-        # print(classes[i], end="")
+        if opt.print:
+            print(classes[i], end="")
 
-    k = int(path.split("/")[-1].split(".")[0])
-
-    try:
-        if int(labels[k][:-1]) != int(predict[:-1]):
-            shutil.copy(path, "error/{}.jpg".format(k))
-    except Exception as e:
-        pass
+    # k = int(path.split("/")[-1].split(".")[0])
+    #
+    # try:
+    #     if int(labels[k][:-1]) != int(predict[:-1]):
+    #         shutil.copy(path, "error/{}.jpg".format(k))
+    # except Exception as e:
+    #     pass
     return predict
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--img-size', type=int, default=500, help='inference size (pixels)')
-    parser.add_argument('--conf-thres', type=float, default=0.50, help='object confidence threshold')
-    parser.add_argument('--iou-thres', type=float, default=0.01, help='IOU threshold for NMS')
-    parser.add_argument('--max-det', type=int, default=1000, help='maximum number of detections per image')
-    parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
-    parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
-    parser.add_argument('--augment', action='store_true', help='augmented inference')
-    parser.add_argument('--save_img', action='store_true', help='show inference res')
-    parser.add_argument('--line-thickness', default=1, type=int, help='bounding box thickness (pixels)')
-    parser.add_argument('--classes', nargs='+', type=int, help='filter by class: --class 0, or --class 0 2 3')
-    opt = parser.parse_args()
 
-    detect_model = init_detect_model(r"ckpt/detect/350_best.pt")
-    rec_model = init_rec_model("ckpt/rec_model.pkl")
+    detect_model = init_detect_model(r"ckpt/detect/623.pt")
+    rec_model = init_rec_model("ckpt/rec/450.pt")
 
-    # path = detect(detect_model, r"C:\Users\wanz\Desktop\eee\ElectricityMeter\training\images\1001.JPG")
-    # convert(path)
-    # rec(opt, rec_model, path)
-
-    dir = r"C:\Users\wanz\Desktop\eee\ElectricityMeter\training\images"
-
+    dir = r"C:\Users\wanz\Desktop\t\ElectricityMeter\training\images"
     all_res = {}
     for i in tqdm(os.listdir(dir)):
         idx = str(i).split(".")[0]
@@ -198,7 +196,6 @@ if __name__ == '__main__':
             continue
 
         predict = rec(opt, rec_model, path)
-        print(predict)
         all_res[int(idx)] = predict
 
     with open("predict.pkl", "wb+")as f:
