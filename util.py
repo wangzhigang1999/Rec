@@ -26,13 +26,13 @@ def xywh2xyxy(x):
 
 
 def expand_box(box):
-    y_min = int(box[1])+10
+    y_min = int(box[1])
     y_max = int(box[3])
-    x_min = int(box[0])+15
+    x_min = int(box[0])
     x_max = int(box[2])
     # ref_width = x_max - x_min
-    # # x_max = int(float(x_max) + 0.05 * ref_width)
-    # # x_min = int(float(x_min) - 0.1 * ref_width)
+    # x_max = int(float(x_max) + 0.05 * ref_width)
+    # x_min = int(float(x_min) - 0.1 * ref_width)
     #
     real_width = x_max - x_min
 

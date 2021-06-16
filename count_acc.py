@@ -17,16 +17,18 @@ def count():
     acc = 0
     wrong = 0
     for k in label.keys():
-        all += 1
         try:
             if int(label[k][:-1]) == int(res[k][:-1]):
                 acc += 1
             else:
                 wrong += 1
                 print("key:{}  label:{}  predict:{}".format(k, label[k][:-1], res[k][:-1]))
+            all += 1
+
         except:
-            wrong += 1
-            print("key:{}  label:{}  predict:{}".format(k, label[k], res[k]))
+            pass
+            # wrong += 1
+            # print("key:{}  label:{}  predict:{}".format(k, label[k], res[k]))
 
     print("total:{}   acc:{}   wrong:{}   acc_rate:{}".format(all, acc, wrong, acc / all))
 
