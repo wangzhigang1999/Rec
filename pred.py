@@ -47,6 +47,7 @@ def pred_template(img):
     predict = rec(opt, rec_model, path)
     # the prediction's data type should be string, e.g. '00001'.
     predict = str(int(predict))
+    # predict = str(predict)
 
     return predict
 
