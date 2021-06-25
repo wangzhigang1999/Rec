@@ -46,9 +46,10 @@ def pred_template(img):
 
     predict = rec(opt, rec_model, path)
     # the prediction's data type should be string, e.g. '00001'.
-    predict = str(int(predict))
-    # predict = str(predict)
-
+    # predict = str(int(predict))
+    predict = str(predict)
+    if opt.print:
+        print(predict)
     return predict
 
 
@@ -68,9 +69,12 @@ def main(base_path, pred_out_path, pred_func, set_name=None):
     # iterate over the dataset once
     for img_name in tqdm(img_list):
         # use some algorithm for prediction
-        pred = pred_func(os.path.join(base_path, set_name, "images", img_name))
+        try:
+            pred = pred_func(os.path.join(base_path, set_name, "images", img_name))
+        except:
+            pred = "000000"
 
-        pred_list.append(pred)
+        pred_list.append(pred[:-1])
 
     # dump results
     dump(pred_out_path, img_list, pred_list)
@@ -78,7 +82,7 @@ def main(base_path, pred_out_path, pred_func, set_name=None):
 
 if __name__ == '__main__':
     # 数据集所在的目录，例如： D:/ElectricityMeter
-    base_path = r'C:\Users\wanz\Desktop\t\ElectricityMeter'
+    base_path = r'C:\Users\wanz\Desktop\ElectricityMeter'
     # 保存的预测结果文件的路径，例如： D:/pred.json
     out = 'pred.json'
     # 调用main函数，对测试集进行预测，并保存预测结果。
@@ -86,5 +90,5 @@ if __name__ == '__main__':
         base_path,
         out,
         pred_func=pred_template,
-        set_name='training'
+        set_name='evaluation'
     )

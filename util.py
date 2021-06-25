@@ -1,7 +1,9 @@
 import cv2
 import numpy as np
+from PIL import ImageFile
 from torchvision.transforms import *
 
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 def load_image(path):
     img = cv2.imread(path)  # BGR

@@ -167,8 +167,8 @@ def rec(opt, model, path):
 
     for i in sorted(classes.keys()):
         predict += str(classes[i])
-        if opt.print:
-            print(classes[i], end="")
+        # if opt.print:
+        #     print(classes[i], end="")
 
     # k = int(path.split("/")[-1].split(".")[0])
     #
